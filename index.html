@@ -72,4 +72,197 @@
     </div>
 
     <div class="card">
-        <div id="quiz-type" class="quiz-type">MODE
+        <div id="quiz-type" class="quiz-type">MODE</div>
+        <div id="question" class="question">데이터를 불러오는 중...</div>
+        <div id="source-tag" class="source-tag">Source: </div>
+        
+        <div id="answer-area" class="answer-area">
+            <div class="answer-label">정답 확인</div>
+            <div id="answer-text" class="answer-text">정답 문장</div>
+        </div>
+    </div>
+
+    <button id="btn-show" class="btn-primary" onclick="showAnswer()">정답 보기</button>
+    
+    <div id="action-buttons" class="action-buttons">
+        <button class="btn-danger" onclick="evaluateQuiz(false)">틀림 ❌</button>
+        <button class="btn-success" onclick="evaluateQuiz(true)">맞춤 ⭕</button>
+    </div>
+    
+    <div class="notice">주관식 퀴즈이므로 머릿속으로 떠올린 후 확인하세요.</div>
+</div>
+
+<script>
+    const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1lDuIrnw8TvtOORqJ60zucPpn3KJEB66MJfGUdf2kpw-C7p71ws5bqbiTWDbuiIWMp6iUAf8M9O7b/pub?output=csv";
+
+    let quizData = [];
+    let currentIndex = 0;
+    let userSelectedMode = "RANDOM"; 
+    let currentMode = "E2K"; 
+    let scoreO = 0;
+    let scoreX = 0;
+    let shuffledQuiz = [];
+
+    function parseHighlight(text) {
+        if (!text) return "";
+        return text.replace(/\*(.*?)\*/g, '<span class="highlight">$1</span>');
+    }
+
+    // 🛡️ 더 정교하게 한 줄씩 완벽하게 파싱하여 정확한 열을 추출하는 파서 알고리즘
+    function parseGoogleCSV(text) {
+        let lines = text.split(/\r?\n/);
+        let result = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+            
+            let row = [];
+            let inQuotes = false;
+            let currentToken = '';
+            
+            for (let j = 0; j < line.length; j++) {
+                let char = line[j];
+                let nextChar = line[j+1];
+                
+                if (char === '"') {
+                    if (inQuotes && nextChar === '"') {
+                        currentToken += '"';
+                        j++; // 쌍따옴표 이스케이프 처리
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === ',' && !inQuotes) {
+                    row.push(currentToken.trim());
+                    currentToken = '';
+                } else {
+                    currentToken += char;
+                }
+            }
+            row.push(currentToken.trim());
+            result.push(row);
+        }
+        return result;
+    }
+
+    async function fetchSheetData() {
+        try {
+            const response = await fetch(GOOGLE_SHEET_CSV_URL);
+            if (!response.ok) throw new Error("네트워크 응답 불량");
+            const data = await response.text();
+            
+            const rows = parseGoogleCSV(data);
+            
+            quizData = [];
+            // i = 1부터 시작 (첫 번째 행인 헤더 제외)
+            for (let i = 1; i < rows.length; i++) {
+                let row = rows[i];
+                if (!row || row.length < 4) continue; // D열(최소 4개 열)까지 데이터가 확보되었는지 확인
+                
+                // 🎯 정밀 타격 맵핑: 구글 시트 실제 배치 구조에 고정
+                let english = row[0] ? row[0].replace(/^"|"$/g, '').trim() : ""; // A열 (영어)
+                let korean = row[2] ? row[2].replace(/^"|"$/g, '').trim() : "";  // C열 (한글뜻)
+                let source = row[3] ? row[3].replace(/^"|"$/g, '').trim() : "구글시트 연동";  // D열 (출처)
+                
+                if (!english) continue;
+                quizData.push({ english, korean, source });
+            }
+            
+            if(quizData.length === 0) {
+                document.getElementById("question").innerText = "구글 시트의 데이터 형식을 확인해 주세요.";
+                return;
+            }
+            
+            initQuiz();
+        } catch (error) {
+            document.getElementById("question").innerText = "데이터 연동 실패. 시트의 공유 권한을 확인해주세요.";
+            console.error(error);
+        }
+    }
+
+    function shuffle(array) {
+        return array.sort(() => Math.random() - 0.5);
+    }
+
+    function changeUserMode(mode) {
+        userSelectedMode = mode;
+        document.getElementById("mode-E2K").classList.remove("active");
+        document.getElementById("mode-K2E").classList.remove("active");
+        document.getElementById("mode-RANDOM").classList.remove("active");
+        
+        if(mode === "E2K") document.getElementById("mode-E2K").classList.add("active");
+        else if(mode === "K2E") document.getElementById("mode-K2E").classList.add("active");
+        else document.getElementById("mode-RANDOM").classList.add("active");
+
+        initQuiz();
+    }
+
+    function initQuiz() {
+        if(quizData.length === 0) return;
+        shuffledQuiz = shuffle([...quizData]);
+        currentIndex = 0;
+        scoreO = 0;
+        scoreX = 0;
+        document.getElementById("cnt-o").innerText = scoreO;
+        document.getElementById("cnt-x").innerText = scoreX;
+        showQuestion();
+    }
+
+    function showQuestion() {
+        if (currentIndex >= shuffledQuiz.length) {
+            alert("시트의 모든 문제를 완료했습니다! 새로운 순서로 다시 섞습니다.");
+            initQuiz();
+            return;
+        }
+
+        document.getElementById("progress").innerText = `진행도: ${currentIndex + 1} / ${shuffledQuiz.length}`;
+        document.getElementById("answer-area").style.display = "none";
+        document.getElementById("action-buttons").style.display = "none";
+        document.getElementById("btn-show").style.display = "block";
+
+        const currentQuiz = shuffledQuiz[currentIndex];
+        
+        if (userSelectedMode === "RANDOM") {
+            currentMode = Math.random() > 0.5 ? "E2K" : "K2E";
+        } else {
+            currentMode = userSelectedMode;
+        }
+
+        if (currentMode === "E2K") {
+            document.getElementById("quiz-type").innerText = "English ➡️ Korean 🧔🏻‍♀️";
+            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.english);
+            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.korean);
+        } else {
+            document.getElementById("quiz-type").innerText = "Korean ➡️ English 🧔🏼‍♀️";
+            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.korean);
+            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.english);
+        }
+
+        // 🎯 문구 자체를 'Source: '로 확실하게 세팅했습니다.
+        document.getElementById("source-tag").innerText = `Source: ${currentQuiz.source}`;
+    }
+
+    function showAnswer() {
+        document.getElementById("answer-area").style.display = "block";
+        document.getElementById("btn-show").style.display = "none";
+        document.getElementById("action-buttons").style.display = "flex";
+    }
+
+    function evaluateQuiz(isCorrect) {
+        if (isCorrect) {
+            scoreO++;
+            document.getElementById("cnt-o").innerText = scoreO;
+        } else {
+            scoreX++;
+            document.getElementById("cnt-x").innerText = scoreX;
+        }
+
+        currentIndex++;
+        setTimeout(showQuestion, 250); 
+    }
+
+    window.onload = fetchSheetData;
+</script>
+
+</body>
+</html>
