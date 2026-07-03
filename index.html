@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>나만의 영어 퀴즈 앱 (실시간 연동+강조)</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧓</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧓</text></svg>">
+
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1e1e24;
+            --primary: #9d56e8; 
+            --primary-hover: #823cd1;
+            --text: #e2e8f0;
+            --sub-text: #94a3b8;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --toggle-bg: #2d2d35;
+            --toggle-active: #9d56e8;
+        }
+        
+        * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .app-container { width: 100%; max-width: 450px; background: var(--card-bg); padding: 24px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        .mode-selector { display: flex; background: var(--toggle-bg); padding: 4px; border-radius: 10px; margin-bottom: 20px; gap: 4px; }
+        .mode-btn { flex: 1; border: none; background: transparent; color: var(--sub-text); font-size: 0.75rem; font-weight: bold; padding: 10px 5px; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; }
+        .mode-btn.active { background: var(--toggle-active); color: white; box-shadow: 0 2px 8px rgba(157,86,232,0.3); }
+
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.9rem; color: var(--sub-text); }
+        .stats { font-weight: bold; }
+        .stats .correct { color: var(--success); }
+        .stats .wrong { color: var(--danger); }
+        
+        .card { background: #25252d; border: 1px solid #2d2d35; border-radius: 16px; padding: 35px 20px; min-height: 240px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 24px; position: relative; }
+        .quiz-type { position: absolute; top: 12px; left: 16px; font-size: 0.75rem; font-weight: bold; letter-spacing: 0.5px; color: #a78bfa; background: rgba(157,86,232,0.15); padding: 4px 8px; border-radius: 6px; }
+        .source-tag { position: absolute; bottom: 12px; right: 16px; font-size: 0.7rem; color: #64748b; max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .question { font-size: 1.2rem; font-weight: 600; line-height: 1.6; word-break: keep-all; margin-bottom: 10px; color: #ffffff; padding: 10px 0; }
+        
+        .highlight { color: var(--primary); font-weight: 800; text-decoration: underline; text-underline-offset: 4px; }
+
+        .answer-area { width: 100%; display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #475569; }
+        .answer-label { font-size: 0.8rem; color: #a78bfa; font-weight: bold; margin-bottom: 5px; }
+        .answer-text { font-size: 1.15rem; font-weight: bold; color: #e2e8f0; line-height: 1.5; word-break: keep-all; }
+        
+        button { width: 100%; border: none; border-radius: 12px; font-size: 1rem; font-weight: 600; padding: 15px; cursor: pointer; transition: all 0.2s ease; }
+        .btn-primary { background-color: var(--primary); color: white; box-shadow: 0 4px 12px rgba(157,86,232,0.3); }
+        .btn-primary:active { transform: scale(0.98); background-color: var(--primary-hover); }
+        
+        .action-buttons { display: none; gap: 12px; width: 100%; }
+        .btn-success { background-color: var(--success); color: white; }
+        .btn-danger { background-color: var(--danger); color: white; }
+        
+        .notice { text-align: center; font-size: 0.8rem; color: #475569; margin-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <div class="mode-selector">
+        <button id="mode-E2K" class="mode-btn" onclick="changeUserMode('E2K')">E ➡️ K 🧔🏻‍♀️</button>
+        <button id="mode-K2E" class="mode-btn" onclick="changeUserMode('K2E')">K ➡️ E 🧔🏼‍♀️</button>
+        <button id="mode-RANDOM" class="mode-btn active" onclick="changeUserMode('RANDOM')">Random</button>
+    </div>
+
+    <div class="header">
+        <div id="progress">진행도: 0 / 0</div>
+        <div class="stats">맞춤: <span id="cnt-o" class="correct">0</span> | 틀림: <span id="cnt-x" class="wrong">0</span></div>
+    </div>
+
+    <div class="card">
+        <div id="quiz-type" class="quiz-type">MODE</div>
+        <div id="question" class="question">데이터를 불러오는 중...</div>
+        <div id="source-tag" class="source-tag">출처</div>
+        
+        <div id="answer-area" class="answer-area">
+            <div class="answer-label">정답 확인</div>
+            <div id="answer-text" class="answer-text">정답 문장</div>
+        </div>
+    </div>
+
+    <button id="btn-show" class="btn-primary" onclick="showAnswer()">정답 보기</button>
+    
+    <div id="action-buttons" class="action-buttons">
+        <button class="btn-danger" onclick="evaluateQuiz(false)">틀림 ❌</button>
+        <button class="btn-success" onclick="evaluateQuiz(true)">맞춤 ⭕</button>
+    </div>
+    
+    <div class="notice">주관식 퀴즈이므로 머릿속으로 떠올린 후 확인하세요.</div>
+</div>
+
+<script>
+    // 🔗 정상 작동 주소인 'pub?output=csv' 형태로 완벽 수정해 두었습니다!
+    const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1lDuIrnw8TvtOORqJ60zucPpn3KJEB66MJfGUdf2kpw-C7p71ws5bqbiTWDbuiIWMp6iUAf8M9O7b/pub?output=csv";
+
+    let quizData = [];
+    let currentIndex = 0;
+    let userSelectedMode = "RANDOM"; 
+    let currentMode = "E2K"; 
+    let scoreO = 0;
+    let scoreX = 0;
+    let shuffledQuiz = [];
+
+    function parseHighlight(text) {
+        if (!text) return "";
+        return text.replace(/\*(.*?)\*/g, '<span class="highlight">$1</span>');
+    }
+
+    function parseCSV(text) {
+        let lines = text.split(/\r?\n/);
+        let result = [];
+        
+        for (let i = 0; i < lines.length; i++) {
+            let line = lines[i].trim();
+            if (!line) continue;
+            
+            let row = [];
+            let inQuotes = false;
+            let currentToken = '';
+            
+            for (let j = 0; j < line.length; j++) {
+                let char = line[j];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    row.push(currentToken);
+                    currentToken = '';
+                } else {
+                    currentToken += char;
+                }
+            }
+            row.push(currentToken);
+            result.push(row);
+        }
+        return result;
+    }
+
+    async function fetchSheetData() {
+        try {
+            const response = await fetch(GOOGLE_SHEET_CSV_URL);
+            if (!response.ok) throw new Error("네트워크 응답 불량");
+            const data = await response.text();
+            
+            const rows = parseCSV(data);
+            
+            quizData = [];
+            for (let i = 1; i < rows.length; i++) {
+                let row = rows[i];
+                if (!row || row.length < 2) continue;
+                
+                let english = row[0].replace(/^"|"$/g, '').replace(/""/g, '"').trim();
+                let korean = row[1] ? row[1].replace(/^"|"$/g, '').replace(/""/g, '"').trim() : "";
+                let source = row[2] ? row[2].replace(/^"|"$/g, '').replace(/""/g, '"').trim() : "구글시트 연동";
+                
+                if (!english) continue;
+                quizData.push({ english, korean, source });
+            }
+            
+            if(quizData.length === 0) {
+                document.getElementById("question").innerText = "구글 시트의 1행 밑에 데이터가 있는지 확인해주세요.";
+                return;
+            }
+            
+            initQuiz();
+        } catch (error) {
+            document.getElementById("question").innerText = "데이터 연동 실패. 시트의 공유 권한을 확인해주세요.";
+            console.error(error);
+        }
+    }
+
+    function shuffle(array) {
+        return array.sort(() => Math.random() - 0.5);
+    }
+
+    function changeUserMode(mode) {
+        userSelectedMode = mode;
+        document.getElementById("mode-E2K").classList.remove("active");
+        document.getElementById("mode-K2E").classList.remove("active");
+        document.getElementById("mode-RANDOM").classList.remove("active");
+        
+        if(mode === "E2K") document.getElementById("mode-E2K").classList.add("active");
+        else if(mode === "K2E") document.getElementById("mode-K2E").classList.add("active");
+        else document.getElementById("mode-RANDOM").classList.add("active");
+
+        initQuiz();
+    }
+
+    function initQuiz() {
+        if(quizData.length === 0) return;
+        shuffledQuiz = shuffle([...quizData]);
+        currentIndex = 0;
+        scoreO = 0;
+        scoreX = 0;
+        document.getElementById("cnt-o").innerText = scoreO;
+        document.getElementById("cnt-x").innerText = scoreX;
+        showQuestion();
+    }
+
+    function showQuestion() {
+        if (currentIndex >= shuffledQuiz.length) {
+            alert("시트의 모든 문제를 완료했습니다! 새로운 순서로 다시 섞습니다.");
+            initQuiz();
+            return;
+        }
+
+        document.getElementById("progress").innerText = `진행도: ${currentIndex + 1} / ${shuffledQuiz.length}`;
+        document.getElementById("answer-area").style.display = "none";
+        document.getElementById("action-buttons").style.display = "none";
+        document.getElementById("btn-show").style.display = "block";
+
+        const currentQuiz = shuffledQuiz[currentIndex];
+        
+        if (userSelectedMode === "RANDOM") {
+            currentMode = Math.random() > 0.5 ? "E2K" : "K2E";
+        } else {
+            currentMode = userSelectedMode;
+        }
+
+        if (currentMode === "E2K") {
+            document.getElementById("quiz-type").innerText = "English ➡️ Korean 🧔🏻‍♀️";
+            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.english);
+            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.korean);
+        } else {
+            document.getElementById("quiz-type").innerText = "Korean ➡️ English 🧔🏼‍♀️";
+            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.korean);
+            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.english);
+        }
+
+        document.getElementById("source-tag").innerText = `출처: ${currentQuiz.source}`;
+    }
+
+    function showAnswer() {
+        document.getElementById("answer-area").style.display = "block";
+        document.getElementById("btn-show").style.display = "none";
+        document.getElementById("action-buttons").style.display = "flex";
+    }
+
+    function evaluateQuiz(isCorrect) {
+        if (isCorrect) {
+            scoreO++;
+            document.getElementById("cnt-o").innerText = scoreO;
+        } else {
+            scoreX++;
+            document.getElementById("cnt-x").innerText = scoreX;
+        }
+
+        currentIndex++;
+        setTimeout(showQuestion, 250); 
+    }
+
+    window.onload = fetchSheetData;
+</script>
+
+</body>
+</html>
