@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title> Language Quiz App </title>
+    <title>Language Quiz App</title>
     
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩🏻‍🦰</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩🏻‍🦰</text></svg>">
@@ -26,9 +26,13 @@
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-color); color: var(--text); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
         .app-container { width: 100%; max-width: 450px; background: var(--card-bg); padding: 24px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
         
-        .mode-selector { display: flex; background: var(--toggle-bg); padding: 4px; border-radius: 10px; margin-bottom: 20px; gap: 4px; }
+        .mode-selector { display: flex; background: var(--toggle-bg); padding: 4px; border-radius: 10px; margin-bottom: 12px; gap: 4px; }
         .mode-btn { flex: 1; border: none; background: transparent; color: var(--sub-text); font-size: 0.75rem; font-weight: bold; padding: 10px 5px; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: center; }
         .mode-btn.active { background: var(--toggle-active); color: white; box-shadow: 0 2px 8px rgba(157,86,232,0.3); }
+
+        /* 🎯 도메인 필터 선택 박스 스타일 */
+        .filter-container { margin-bottom: 20px; }
+        .domain-select { width: 100%; background: #25252d; border: 1px solid #2d2d35; color: var(--text); padding: 10px; border-radius: 10px; font-size: 0.85rem; font-weight: bold; outline: none; cursor: pointer; }
 
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; font-size: 0.9rem; color: var(--sub-text); }
         .stats { font-weight: bold; }
@@ -74,6 +78,12 @@
         <button id="mode-RANDOM" class="mode-btn active" onclick="changeUserMode('RANDOM')">Random</button>
     </div>
 
+    <div class="filter-container">
+        <select id="domain-select" class="domain-select" onchange="filterByDomain()">
+            <option value="ALL">전체 도메인 보기 (로딩 중...)</option>
+        </select>
+    </div>
+
     <div class="header">
         <div id="progress">진행도: 0 / 0</div>
         <div class="stats">맞춤: <span id="cnt-o" class="correct">0</span> | 틀림: <span id="cnt-x" class="wrong">0</span></div>
@@ -104,13 +114,14 @@
 <script>
     const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1lDuIrnw8TvtOORqJ60zucPpn3KJEB66MJfGUdf2kpw-C7p71ws5bqbiTWDbuiIWMp6iUAf8M9O7b/pub?output=csv";
 
-    let quizData = [];
+    let quizData = [];         // 시트에서 가져온 원본 전체 데이터
+    let filteredData = [];     // 현재 도메인 필터가 적용된 데이터
+    let shuffledQuiz = [];     // 현재 필터에서 셔플된 문제 배열
     let currentIndex = 0;
     let userSelectedMode = "RANDOM"; 
     let currentMode = "E2K"; 
     let scoreO = 0;
     let scoreX = 0;
-    let shuffledQuiz = [];
 
     function parseHighlight(text) {
         if (!text) return "";
@@ -158,21 +169,25 @@
             const rows = parseGoogleCSV(data);
             
             quizData = [];
+            let domainSet = new Set(); // 중복 없는 도메인 목록 추출용
             
             for (let i = 1; i < rows.length; i++) {
                 let row = rows[i];
-                
                 if (!row || row.length === 0) continue; 
                 
                 let english = row[0] ? row[0].trim() : ""; 
                 let korean  = row[2] ? row[2].trim() : ""; 
                 let source  = row[3] ? row[3].trim() : ""; 
-                // 🎯 5번째 열(E열, index 4) 데이터를 확실하게 매핑하되, 앞뒤 따옴표 찌꺼기가 남아있을 수 있으므로 제거 처리 추가
-                let domain  = row[4] ? row[4].replace(/^"|"$/g, '').trim() : ""; 
+                
+                // 🛡️ [핵심 보정] 시트 게시 중 E열 칸이 잘려 row[4]가 없더라도 빈 값 처리하여 에러 방지
+                let domain  = (row.length > 4 && row[4]) ? row[4].replace(/^"|"$/g, '').trim() : ""; 
                 
                 if (!english) continue;
                 
                 quizData.push({ english, korean, source, domain });
+                
+                // 도메인 텍스트가 존재하면 세트에 추가
+                if (domain) { domainSet.add(domain); }
             }
             
             if(quizData.length === 0) {
@@ -180,11 +195,41 @@
                 return;
             }
             
-            initQuiz();
+            // ⚙️ 도메인 선택 상자(Select Box) 동적 생성
+            updateDomainSelectBox(domainSet);
+            
+            // 필터링 적용 및 퀴즈 초기화
+            filterByDomain();
+            
         } catch (error) {
             document.getElementById("question").innerText = "데이터 연동 실패. 시트의 공유 권한을 확인해주세요.";
             console.error(error);
         }
+    }
+
+    function updateDomainSelectBox(domainSet) {
+        const selectEl = document.getElementById("domain-select");
+        selectEl.innerHTML = '<option value="ALL">✨ 전체 도메인 보기</option>';
+        
+        domainSet.forEach(domain => {
+            const option = document.createElement("option");
+            option.value = domain;
+            option.innerText = `📂 ${domain}`;
+            selectEl.appendChild(option);
+        });
+    }
+
+    // 📂 선택한 도메인에 따라 데이터를 거르는 필터 함수
+    function filterByDomain() {
+        const selectedDomain = document.getElementById("domain-select").value;
+        
+        if (selectedDomain === "ALL") {
+            filteredData = [...quizData];
+        } else {
+            filteredData = quizData.filter(item => item.domain === selectedDomain);
+        }
+        
+        initQuiz();
     }
 
     function shuffle(array) {
@@ -192,93 +237,3 @@
     }
 
     function changeUserMode(mode) {
-        userSelectedMode = mode;
-        document.getElementById("mode-E2K").classList.remove("active");
-        document.getElementById("mode-K2E").classList.remove("active");
-        document.getElementById("mode-RANDOM").classList.remove("active");
-        
-        if(mode === "E2K") document.getElementById("mode-E2K").classList.add("active");
-        else if(mode === "K2E") document.getElementById("mode-K2E").classList.add("active");
-        else document.getElementById("mode-RANDOM").classList.add("active");
-
-        initQuiz();
-    }
-
-    function initQuiz() {
-        if(quizData.length === 0) return;
-        shuffledQuiz = shuffle([...quizData]);
-        currentIndex = 0;
-        scoreO = 0;
-        scoreX = 0;
-        document.getElementById("cnt-o").innerText = scoreO;
-        document.getElementById("cnt-x").innerText = scoreX;
-        showQuestion();
-    }
-
-    function showQuestion() {
-        if (currentIndex >= shuffledQuiz.length) {
-            alert("시트의 모든 문제를 완료했습니다! 새로운 순서로 다시 섞습니다.");
-            initQuiz();
-            return;
-        }
-
-        document.getElementById("progress").innerText = `진행도: ${currentIndex + 1} / ${shuffledQuiz.length}`;
-        document.getElementById("answer-area").style.display = "none";
-        document.getElementById("action-buttons").style.display = "none";
-        document.getElementById("btn-show").style.display = "block";
-
-        const currentQuiz = shuffledQuiz[currentIndex];
-        
-        if (userSelectedMode === "RANDOM") {
-            currentMode = Math.random() > 0.5 ? "E2K" : "K2E";
-        } else {
-            currentMode = userSelectedMode;
-        }
-
-        if (currentMode === "E2K") {
-            document.getElementById("quiz-type").innerText = "English ➡️ Korean 🧔🏻‍♀️";
-            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.english);
-            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.korean);
-        } else {
-            document.getElementById("quiz-type").innerText = "Korean ➡️ English 🧔🏼‍♀️";
-            document.getElementById("question").innerHTML = parseHighlight(currentQuiz.korean);
-            document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.english);
-        }
-
-        /* 🎯 좌측 상단 도메인(Domain) 노출 보정 */
-        const domainEl = document.getElementById("domain-tag");
-        if (currentQuiz.domain && currentQuiz.domain !== "") {
-            domainEl.innerText = currentQuiz.domain;
-            domainEl.style.display = "block";
-        } else {
-            domainEl.style.display = "none";
-        }
-
-        /* 📌 우측 하단 출처(Source) 노출 */
-        document.getElementById("source-tag").innerText = `Source: ${currentQuiz.source || '구글시트 연동'}`;
-    }
-
-    function showAnswer() {
-        document.getElementById("answer-area").style.display = "block";
-        document.getElementById("btn-show").style.display = "none";
-        document.getElementById("action-buttons").style.display = "flex";
-    }
-
-    function evaluateQuiz(isCorrect) {
-        if (isCorrect) {
-            scoreO++;
-            document.getElementById("cnt-o").innerText = scoreO;
-        } else {
-            scoreX++;
-            document.getElementById("cnt-x").innerText = scoreX;
-        }
-
-        currentIndex++;
-        setTimeout(showQuestion, 250); 
-    }
-
-    window.onload = fetchSheetData;
-</script>
-
-</body>
-</html>
