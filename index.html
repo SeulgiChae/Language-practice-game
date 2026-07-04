@@ -156,9 +156,8 @@
 
     async function fetchSheetData() {
         try {
-            // ⚡ [최적화] 구글 서버 및 브라우저 캐시 정체를 뚫기 위한 타임스탬프 추가 파라미터 적용
-            const cacheBuster = `&_cb=${new Date().getTime()}`;
-            const response = await fetch(GOOGLE_SHEET_CSV_URL + cacheBuster, { cache: "no-cache" });
+            // 🛠️ 주소 왜곡 없이 원본 URL 그대로 기본 fetch 요청을 시도합니다.
+            const response = await fetch(GOOGLE_SHEET_CSV_URL);
             if (!response.ok) throw new Error("네트워크 응답 불량");
             const data = await response.text();
             
@@ -166,9 +165,6 @@
             
             quizData = [];
             let domainSet = new Set(); 
-            
-            // ⚡ [최적화] 문자열 클리닝 규칙을 한 번에 적용하기 위한 인라인 정규식 최적화
-            const trimQuotes = /^"|"$/g;
 
             for (let i = 1; i < rows.length; i++) {
                 let row = rows[i];
@@ -177,7 +173,7 @@
                 let english = row[0] ? row[0].trim() : ""; 
                 let korean  = row[2] ? row[2].trim() : ""; 
                 let source  = row[3] ? row[3].trim() : ""; 
-                let domain  = (row.length > 4 && row[4]) ? row[4].replace(trimQuotes, '').trim() : ""; 
+                let domain  = (row.length > 4 && row[4]) ? row[4].replace(/^"|"$/g, '').trim() : ""; 
                 
                 if (!english) continue;
                 
@@ -313,11 +309,4 @@
         }
 
         currentIndex++;
-        setTimeout(showQuestion, 250); 
-    }
-
-    window.onload = fetchSheetData;
-</script>
-
-</body>
-</html>
+        setTimeout(showQuestion, 2
