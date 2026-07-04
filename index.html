@@ -108,41 +108,37 @@
         return text.replace(/\*(.*?)\*/g, '<span class="highlight">$1</span>');
     }
 
-    // 🛡️ 더 정교하게 한 줄씩 완벽하게 파싱하여 정확한 열을 추출하는 파서 알고리즘
+    // 🛡️ 셀 내부 줄바꿈(Alt+Enter)과 따옴표, 쉼표를 완벽하게 분리하는 표준 CSV 파서
     function parseGoogleCSV(text) {
-        let lines = text.split(/\r?\n/);
-        let result = [];
-        
-        for (let i = 0; i < lines.length; i++) {
-            let line = lines[i].trim();
-            if (!line) continue;
-            
-            let row = [];
-            let inQuotes = false;
-            let currentToken = '';
-            
-            for (let j = 0; j < line.length; j++) {
-                let char = line[j];
-                let nextChar = line[j+1];
-                
-                if (char === '"') {
-                    if (inQuotes && nextChar === '"') {
-                        currentToken += '"';
-                        j++; // 쌍따옴표 이스케이프 처리
-                    } else {
-                        inQuotes = !inQuotes;
-                    }
-                } else if (char === ',' && !inQuotes) {
-                    row.push(currentToken.trim());
-                    currentToken = '';
+        let lines = [];
+        let row = [""];
+        let inQuotes = false;
+
+        for (let i = 0; i < text.length; i++) {
+            let char = text[i];
+            let nextChar = text[i + 1];
+
+            if (char === '"') {
+                if (inQuotes && nextChar === '"') {
+                    row[row.length - 1] += '"';
+                    i++; // 이스케이프된 쌍따옴표 넘기기
                 } else {
-                    currentToken += char;
+                    inQuotes = !inQuotes; // 따옴표 시작 또는 끝
                 }
+            } else if (char === ',' && !inQuotes) {
+                row.push(""); // 다음 열로 이동
+            } else if ((char === '\r' || char === '\n') && !inQuotes) {
+                if (char === '\r' && nextChar === '\n') { i++; }
+                lines.push(row);
+                row = [""]; // 다음 행 준비
+            } else {
+                row[row.length - 1] += char;
             }
-            row.push(currentToken.trim());
-            result.push(row);
         }
-        return result;
+        if (row.length > 1 || row[0] !== "") {
+            lines.push(row);
+        }
+        return lines;
     }
 
     async function fetchSheetData() {
@@ -154,32 +150,25 @@
             const rows = parseGoogleCSV(data);
             
             quizData = [];
-            console.log(`[디버그] 구글 시트에서 파싱된 총 행 수(헤더 포함): ${rows.length}개`);
-
+            
+            // i = 1부터 시작 (첫 번째 행인 헤더 제외)
             for (let i = 1; i < rows.length; i++) {
                 let row = rows[i];
                 
-                // 데이터 열이 부족한 경우 진단
-                if (!row || row.length < 3) {
-                    console.warn(`[누락 의심] ${i+1}번째 행: 열 데이터가 부족하여 제외됨`, row);
-                    continue; 
-                }
+                // 유효하지 않은 행 기초 필터링
+                if (!row || row.length === 0) continue; 
                 
-                let english = row[0] ? row[0].replace(/^"|"$/g, '').trim() : ""; 
-                let korean = row[2] ? row[2].replace(/^"|"$/g, '').trim() : "";  
-                let source = row[3] ? row[3].replace(/^"|"$/g, '').trim() : "";  
-                let domain = row[4] ? row[4].replace(/^"|"$/g, '').trim() : "";  
+                // 각 열 데이터 안전하게 추출 (값이 없으면 빈 문자열 대입)
+                let english = row[0] ? row[0].trim() : ""; // A열 (영어)
+                let korean  = row[2] ? row[2].trim() : ""; // C열 (한글뜻)
+                let source  = row[3] ? row[3].trim() : ""; // D열 (출처)
+                let domain  = row[4] ? row[4].trim() : ""; // E열 (도메인)
                 
-                // 영어 문장이 없는 경우 진단
-                if (!english) {
-                    console.warn(`[누락 의심] ${i+1}번째 행: 영어 문장(A열)이 비어 있어 제외됨. 한글뜻: ${korean}`);
-                    continue;
-                }
+                // ⚠️ 핵심: 최소한 영어 문장만 들어있다면 무조건 통과 (컷오프 기준 완화)
+                if (!english) continue;
                 
                 quizData.push({ english, korean, source, domain });
             }
-            
-            console.log(`[디버그] 최종 앱에 로드된 퀴즈 수: ${quizData.length}개`);
             
             if(quizData.length === 0) {
                 document.getElementById("question").innerText = "구글 시트의 데이터 형식을 확인해 주세요.";
