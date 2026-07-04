@@ -106,7 +106,8 @@
 </div>
 
 <script>
-    const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1lDuIrnw8TvtOORqJ60zucPpn3KJEB66MJfGUdf2kpw-C7p71ws5bqbiTWDbuiIWMp6iUAf8M9O7b/pub?output=csv";
+    // ⚠️ [중요] 아래 주소에 1단계에서 새로 복사한 구글 시트 웹 게시용 CSV URL을 붙여넣으세요!
+    const GOOGLE_SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR1lDuIrnw8TvtOORqJ60zucPpn3KJEB66MJfGUdf2kpw-C7p71ws5bqbiTWDbuiIWMp6iUAf8M9O7b/pub?gid=0&single=true&output=csv";
 
     let quizData = [];         
     let filteredData = [];     
@@ -156,9 +157,8 @@
 
     async function fetchSheetData() {
         try {
-            // 🛠️ 주소 왜곡 없이 원본 URL 그대로 기본 fetch 요청을 시도합니다.
             const response = await fetch(GOOGLE_SHEET_CSV_URL);
-            if (!response.ok) throw new Error("네트워크 응답 불량");
+            if (!response.ok) throw new Error(`서버 응답 에러 (상태코드: ${response.status})`);
             const data = await response.text();
             
             const rows = parseGoogleCSV(data);
@@ -182,7 +182,7 @@
             }
             
             if(quizData.length === 0) {
-                document.getElementById("question").innerText = "구글 시트의 데이터 형식을 확인해 주세요.";
+                document.getElementById("question").innerHTML = "<span style='color:#e74c3c;'>구글 시트 내에 유효한 영어 문장 데이터가 없습니다.</span>";
                 return;
             }
             
@@ -190,7 +190,8 @@
             filterByDomain();
             
         } catch (error) {
-            document.getElementById("question").innerText = "데이터 연동 실패. 시트의 공유 권한을 확인해주세요.";
+            // 🚨 무작정 대기하지 않고 사용자 화면에 원인 에러를 다이렉트로 출력합니다.
+            document.getElementById("question").innerHTML = `<span style='color:#e74c3c; font-size:1rem;'>연동 실패: ${error.message}<br><br>시트의 [웹에 게시] 설정이나 링크 주소를 다시 확인해 주세요.</span>`;
             console.error(error);
         }
     }
@@ -309,4 +310,11 @@
         }
 
         currentIndex++;
-        setTimeout(showQuestion, 2
+        setTimeout(showQuestion, 250); 
+    }
+
+    window.onload = fetchSheetData;
+</script>
+
+</body>
+</html>
