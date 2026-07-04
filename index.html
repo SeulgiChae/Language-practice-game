@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title> Language Quiz App </title>
+    <title> Language Practice Quiz </title>
     
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩🏻‍🦰</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩🏻‍🦰</text></svg>">
@@ -36,8 +36,16 @@
         .stats .wrong { color: var(--danger); }
         
         .card { background: #25252d; border: 1px solid #2d2d35; border-radius: 16px; padding: 35px 20px; min-height: 240px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; margin-bottom: 24px; position: relative; }
-        .quiz-type { position: absolute; top: 12px; left: 16px; font-size: 0.75rem; font-weight: bold; letter-spacing: 0.5px; color: #a78bfa; background: rgba(157,86,232,0.15); padding: 4px 8px; border-radius: 6px; }
+        
+        /* 🏷️ 왼쪽 상단: 도메인 태그 스타일 */
+        .domain-tag { position: absolute; top: 12px; left: 16px; font-size: 0.7rem; font-weight: bold; color: #38bdf8; background: rgba(56, 189, 248, 0.15); padding: 4px 8px; border-radius: 6px; max-width: 45%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: none; }
+        
+        /* ⚙️ 오른쪽 상단: 퀴즈 모드 태그 스타일 */
+        .quiz-type { position: absolute; top: 12px; right: 16px; font-size: 0.75rem; font-weight: bold; letter-spacing: 0.5px; color: #a78bfa; background: rgba(157,86,232,0.15); padding: 4px 8px; border-radius: 6px; }
+        
+        /* 📌 오른쪽 하단: 출처 태그 스타일 */
         .source-tag { position: absolute; bottom: 12px; right: 16px; font-size: 0.7rem; color: #64748b; max-width: 90%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
         .question { font-size: 1.2rem; font-weight: 600; line-height: 1.6; word-break: keep-all; margin-bottom: 10px; color: #ffffff; padding: 10px 0; }
         
         .highlight { color: var(--primary); font-weight: 800; text-decoration: underline; text-underline-offset: 4px; }
@@ -72,6 +80,7 @@
     </div>
 
     <div class="card">
+        <div id="domain-tag" class="domain-tag">DOMAIN</div>
         <div id="quiz-type" class="quiz-type">MODE</div>
         <div id="question" class="question">데이터를 불러오는 중...</div>
         <div id="source-tag" class="source-tag">Source: </div>
@@ -108,7 +117,6 @@
         return text.replace(/\*(.*?)\*/g, '<span class="highlight">$1</span>');
     }
 
-    // 🛡️ 셀 내부 줄바꿈(Alt+Enter)과 따옴표, 쉼표를 완벽하게 분리하는 표준 CSV 파서
     function parseGoogleCSV(text) {
         let lines = [];
         let row = [""];
@@ -121,16 +129,16 @@
             if (char === '"') {
                 if (inQuotes && nextChar === '"') {
                     row[row.length - 1] += '"';
-                    i++; // 이스케이프된 쌍따옴표 넘기기
+                    i++; 
                 } else {
-                    inQuotes = !inQuotes; // 따옴표 시작 또는 끝
+                    inQuotes = !inQuotes; 
                 }
             } else if (char === ',' && !inQuotes) {
-                row.push(""); // 다음 열로 이동
+                row.push(""); 
             } else if ((char === '\r' || char === '\n') && !inQuotes) {
                 if (char === '\r' && nextChar === '\n') { i++; }
                 lines.push(row);
-                row = [""]; // 다음 행 준비
+                row = [""]; 
             } else {
                 row[row.length - 1] += char;
             }
@@ -151,20 +159,17 @@
             
             quizData = [];
             
-            // i = 1부터 시작 (첫 번째 행인 헤더 제외)
             for (let i = 1; i < rows.length; i++) {
                 let row = rows[i];
                 
-                // 유효하지 않은 행 기초 필터링
                 if (!row || row.length === 0) continue; 
                 
-                // 각 열 데이터 안전하게 추출 (값이 없으면 빈 문자열 대입)
-                let english = row[0] ? row[0].trim() : ""; // A열 (영어)
-                let korean  = row[2] ? row[2].trim() : ""; // C열 (한글뜻)
-                let source  = row[3] ? row[3].trim() : ""; // D열 (출처)
-                let domain  = row[4] ? row[4].trim() : ""; // E열 (도메인)
+                let english = row[0] ? row[0].trim() : ""; 
+                let korean  = row[2] ? row[2].trim() : ""; 
+                let source  = row[3] ? row[3].trim() : ""; 
+                // 🎯 5번째 열(E열, index 4) 데이터를 확실하게 매핑하되, 앞뒤 따옴표 찌꺼기가 남아있을 수 있으므로 제거 처리 추가
+                let domain  = row[4] ? row[4].replace(/^"|"$/g, '').trim() : ""; 
                 
-                // ⚠️ 핵심: 최소한 영어 문장만 들어있다면 무조건 통과 (컷오프 기준 완화)
                 if (!english) continue;
                 
                 quizData.push({ english, korean, source, domain });
@@ -240,8 +245,17 @@
             document.getElementById("answer-text").innerHTML = parseHighlight(currentQuiz.english);
         }
 
-        // 🎯 문구 자체를 'Source: '로 확실하게 세팅했습니다.
-        document.getElementById("source-tag").innerText = `Source: ${currentQuiz.source}`;
+        /* 🎯 좌측 상단 도메인(Domain) 노출 보정 */
+        const domainEl = document.getElementById("domain-tag");
+        if (currentQuiz.domain && currentQuiz.domain !== "") {
+            domainEl.innerText = currentQuiz.domain;
+            domainEl.style.display = "block";
+        } else {
+            domainEl.style.display = "none";
+        }
+
+        /* 📌 우측 하단 출처(Source) 노출 */
+        document.getElementById("source-tag").innerText = `Source: ${currentQuiz.source || '구글시트 연동'}`;
     }
 
     function showAnswer() {
